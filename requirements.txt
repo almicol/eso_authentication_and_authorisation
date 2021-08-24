@@ -1,0 +1,5 @@
+numpy==1.16.*
+astropy==4.*
+pyvo
+matplotlib==3.*
+pandas
