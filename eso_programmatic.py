@@ -1,18 +1,18 @@
 #### file:        eso_programmatic.py
 #### description: ESO python library defining methods to programmatically access the ESO science archive
 #### status:      alpha release
-#### version:     0.3
-#### date:        2021-07-29
+#### version:     0.4 Removed cgi dependency (contentdisposition).
+#### date:        2026-04-01
 #### type:        not yet a package, just only an evolving library of methods
 #### contact:     https://support.eso.org/
 #### ---------------------------------------------------------------------------------------------------
 
 __name__ = "eso_programmatic"
-__version__ = "0.3"
+__version__ = "0.4"
 
 ##   - Definition of ESO services' endpoints
 
-ESO_TAP_OBS              = "http://archive.eso.org/tap_obs"
+ESO_TAP_OBS              = "https://archive.eso.org/tap_obs"
 TOKEN_AUTHENTICATION_URL = "https://www.eso.org/sso/oidc/token"
 
 ##   - getToken: Method to authenticate with ESO credentials;
@@ -34,7 +34,7 @@ def getToken(username, password):
                                     "username":      username,
                                     "password":      password})
         token_response = json.loads(response.content)
-        token = token_response['id_token']+'=='
+        token = token_response['id_token']
     except NameError as e:
         print(e)
     except:
@@ -53,9 +53,26 @@ def createSession(token=None):
 ##   - downloadURL(file_url[, dirname, filename, session]): Method to download a file given its URL,
 # either anonymously or with a token.
 # Returns: http status, filepath on disk (if successul)
-import cgi
+
 import os
 import sys
+from email.message import Message
+
+def parse_disposition(contentdisposition):
+    """Parse a content disposition using email.message and no more cgi"""
+    msg = Message()
+    msg['Content-Disposition'] = contentdisposition
+
+    # Get the disposition type (e.g. attachment / inline)
+    disposition = msg.get_content_disposition()
+
+    # Get parameters as a dict
+    params = dict(msg.get_params(header='content-disposition'))
+
+    filename = msg.get_filename()
+
+    return disposition, filename, params
+
 def downloadURL(file_url, dirname='.', filename=None, session=None):
     """Method to download a file, either anonymously (no session or session not "tokenized"), or authenticated (if session with token is provided).
        It returns: http status, and filepath on disk (if successful)"""
@@ -75,8 +92,7 @@ def downloadURL(file_url, dirname='.', filename=None, session=None):
     if filename == None:
         contentdisposition = response.headers.get('Content-Disposition')
         if contentdisposition != None:
-            value, params = cgi.parse_header(contentdisposition)
-            filename = params["filename"]
+            disposition, filename, params = parse_disposition(contentdisposition)
 
         # if the response header does not provide a name, derive a name from the URL
         if filename == None:
@@ -98,6 +114,10 @@ def downloadURL(file_url, dirname='.', filename=None, session=None):
 
 
 # Let's define some methods to nicely print reference files information from the calselector service:
+
+##   - printCalselectorInfo(description, mode_requested): method that returns
+##     possible alerts and warnings on the obtained calibration cascade,
+##     while printing most relevant info.
 
 # calselectorInfo(description): [internal] parsing a calselector description 
 import re
@@ -128,12 +148,9 @@ def calselectorInfo(description):
 
     return category, complete, certified, mode, messages
 
-##   - printCalselectorInfo(description, mode_requested): method that returns
-##     possible alerts and warnings on the obtained calibration cascade,
-##     while printing most relevant info.
-
-def printCalselectorInfo(description, mode_requested):
-    """Print the most relevant params contained in the main calselector description."""
+def printCalselectorInfo(description, mode_requested, verbose=0):
+    """Prints (if verbose) the most relevant params contained in the main calselector description.
+       Returns 3 warnings """
 
     category, complete, certified, mode_executed, messages = calselectorInfo(description)
 
@@ -149,21 +166,23 @@ def printCalselectorInfo(description, mode_requested):
     if certified != "true":
         certified_warning = "WARNING: certified=\"%s\"" %(certified)
 
-    print("    calibration info:")
-    print("    ------------------------------------")
-    print("    science category=%s" % (category))
-    print("    cascade complete=%s" % (complete))
-    print("    cascade messages=%s" % (messages))
-    print("    cascade certified=%s" % (certified))
-    print("    cascade executed mode=%s" % (mode_executed))
-    print("    full description: %s" % (description))
+    if verbose:
+        print("    calibration info:")
+        print("    ------------------------------------")
+        print("    science category=%s" % (category))
+        print("    cascade complete=%s" % (complete))
+        print("    cascade messages=%s" % (messages))
+        print("    cascade certified=%s" % (certified))
+        print("    cascade executed mode=%s" % (mode_executed))
+    if verbose > 1:
+        print("    full description: %s" % (description))
 
     return alert, mode_warning, certified_warning
 
 ##   - printTableTransposedByTheRecord: Utility method to print a table transposed, one record at the time    
 
 def printTableTransposedByTheRecord(table):
-    """Utility method to print a table transposed, one record at the time"""
+    """Utility method to print a table transposed, one record at the time (assuming some max string lengths)"""
     prompt='    '
     rec_sep='-' * 105
     print('=' * 115)
